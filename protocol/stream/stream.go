@@ -9,18 +9,18 @@ import (
 	"math"
 	"strconv"
 
-	"../protocol"
+	"github.com/gary163/seals/protocol"
 )
 
 type stream struct {
-	maxSend int //最大发送的长度
-	maxRecv int //最小发送的长度
-	headBuf []byte //包长度字节
-	bodyBuf []byte //包体
-	headEncode func([]byte,int)
-	headDecode func([]byte)int
-	rw      io.ReadWriter //io接口
-	n int  //包头占用的字节数 可配置 1,2,4,8
+	maxSend    int    //最大发送的长度
+	maxRecv    int    //最小发送的长度
+	headBuf    []byte //包长度字节
+	bodyBuf    []byte //包体
+	headEncode func([]byte, int)
+	headDecode func([]byte) int
+	rw         io.ReadWriter //io接口
+	n          int           //包头占用的字节数 可配置 1,2,4,8
 }
 
 const DEFAULT_PACK_HEAD_N = 2
@@ -31,13 +31,13 @@ func (s *stream) Init(rw io.ReadWriter, config string) error {
 		return errors.New("streamProtocol:rw is nil")
 	}
 	cfg := make(map[string]string)
-	json.Unmarshal([]byte(config),&cfg)
+	json.Unmarshal([]byte(config), &cfg)
 
-	n,ok := cfg["n"]
+	n, ok := cfg["n"]
 	if !ok {
 		s.n = DEFAULT_PACK_HEAD_N
-	}else{
-		s.n,_ = strconv.Atoi(n)
+	} else {
+		s.n, _ = strconv.Atoi(n)
 	}
 	return s.fixLen()
 }
@@ -48,7 +48,7 @@ func (s *stream) fixLen() error {
 	case 1:
 		s.maxRecv = math.MaxInt8
 		s.maxSend = math.MaxInt8
-		s.headEncode = func(b []byte, size int){
+		s.headEncode = func(b []byte, size int) {
 			b[0] = byte(size)
 		}
 		s.headDecode = func(b []byte) int {
@@ -59,7 +59,7 @@ func (s *stream) fixLen() error {
 		s.maxSend = math.MaxInt16
 		s.maxRecv = math.MaxInt16
 		s.headEncode = func(b []byte, size int) {
-			 binary.BigEndian.PutUint16(b,uint16(size))
+			binary.BigEndian.PutUint16(b, uint16(size))
 		}
 		s.headDecode = func(b []byte) int {
 			return int(binary.LittleEndian.Uint16(b))
@@ -69,7 +69,7 @@ func (s *stream) fixLen() error {
 		s.maxSend = math.MaxInt32
 		s.maxRecv = math.MaxInt32
 		s.headEncode = func(b []byte, size int) {
-			binary.BigEndian.PutUint32(b,uint32(size))
+			binary.BigEndian.PutUint32(b, uint32(size))
 		}
 		s.headDecode = func(b []byte) int {
 			return int(binary.LittleEndian.Uint32(b))
@@ -79,7 +79,7 @@ func (s *stream) fixLen() error {
 		s.maxSend = math.MaxInt64
 		s.maxRecv = math.MaxInt64
 		s.headEncode = func(b []byte, size int) {
-			binary.BigEndian.PutUint64(b,uint64(size))
+			binary.BigEndian.PutUint64(b, uint64(size))
 		}
 		s.headDecode = func(b []byte) int {
 			return int(binary.LittleEndian.Uint64(b))
@@ -93,25 +93,25 @@ func (s *stream) fixLen() error {
 }
 
 func (s *stream) Receive() (interface{}, error) {
-	if _,err := io.ReadFull(s.rw,s.headBuf); err != nil {
-		return nil,err
+	if _, err := io.ReadFull(s.rw, s.headBuf); err != nil {
+		return nil, err
 	}
 	size := s.headDecode(s.headBuf)
 	if size > s.maxRecv {
-		return nil,errors.New("streamProtocol:pack size is large than maxRecv")
+		return nil, errors.New("streamProtocol:pack size is large than maxRecv")
 	}
 	if cap(s.bodyBuf) < size {
-		s.bodyBuf = make([]byte,size*2)
+		s.bodyBuf = make([]byte, size*2)
 	}
 	buff := s.bodyBuf[:size]
-	if _,err := io.ReadFull(s.rw,buff); err != nil {
-		return nil,err
+	if _, err := io.ReadFull(s.rw, buff); err != nil {
+		return nil, err
 	}
-	return buff,nil
+	return buff, nil
 }
 
 func (s *stream) Send(msg interface{}) error {
-	val,ok := msg.([]byte)
+	val, ok := msg.([]byte)
 	if !ok {
 		return errors.New("streamProtocol:method Send Parameter type error")
 	}
@@ -119,17 +119,17 @@ func (s *stream) Send(msg interface{}) error {
 	sendBuf := new(bytes.Buffer)
 	sendBuf.Write(s.headBuf)
 	sendBuf.Write(val)
-	s.headEncode(sendBuf.Bytes(),len(val))
+	s.headEncode(sendBuf.Bytes(), len(val))
 	return nil
 }
 
 func (s *stream) Close() error {
-	if closer,ok := s.rw.(io.Closer); ok {
+	if closer, ok := s.rw.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-func init(){
-	protocol.Register("stream",&stream{})
+func init() {
+	protocol.Register("stream", &stream{})
 }

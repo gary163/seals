@@ -7,7 +7,7 @@ import (
 )
 
 type protocol interface {
-	Init(rw io.ReadWriter,config string) error
+	Init(rw io.ReadWriter, config string) error
 	Receive() (interface{}, error)
 	Send(interface{}) error
 	Close() error
@@ -15,7 +15,7 @@ type protocol interface {
 
 var (
 	procotolMux sync.RWMutex
-	adapters map[string]protocol
+	adapters    map[string]protocol
 )
 
 func Register(name string, adpater protocol) {
@@ -25,22 +25,22 @@ func Register(name string, adpater protocol) {
 		panic("Protocol:adapter is nil")
 	}
 
-	if _,ok := adapters[name]; ok {
-		panic("Protocol:Register called twice for adapter" +name)
+	if _, ok := adapters[name]; ok {
+		panic("Protocol:Register called twice for adapter" + name)
 	}
 	adapters[name] = adpater
 }
 
-func newProtocol(name string, config string,rw io.ReadWriter) (protocol,error) {
+func NewProtocol(name string, config string, rw io.ReadWriter) (protocol, error) {
 	adapter, ok := adapters[name]
 	if !ok {
 		err := fmt.Errorf("Protocol: unknown adapter name %q (forgot to import?)", name)
-		return nil,err
+		return nil, err
 	}
 
 	err := adapter.Init(rw, config)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
-	return adapter,nil
+	return adapter, nil
 }

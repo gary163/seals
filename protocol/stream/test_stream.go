@@ -1,7 +1,11 @@
 package stream
 
-import "testing"
+import (
+	"testing"
 
-func test_stream(t testing.T){
+	"github.com/gary163/seals/protocol"
+)
 
+func test_stream(t testing.T) {
+	stream := protocol.NewProtocol("stream")
 }
