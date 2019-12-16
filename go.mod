@@ -1,3 +1,3 @@
-module gary163/seals
+module github.com/gary163/seals
 
 go 1.12
