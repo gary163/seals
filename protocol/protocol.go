@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-type protocol interface {
+type Protocol interface {
 	Init(rw io.ReadWriter, config string) error
 	Receive() (interface{}, error)
 	Send(interface{}) error
@@ -15,10 +15,10 @@ type protocol interface {
 
 var (
 	procotolMux sync.RWMutex
-	adapters    map[string]protocol
+	adapters = make(map[string]Protocol)
 )
 
-func Register(name string, adpater protocol) {
+func Register(name string, adpater Protocol) {
 	procotolMux.Lock()
 	defer procotolMux.Unlock()
 	if adpater == nil {
@@ -31,7 +31,7 @@ func Register(name string, adpater protocol) {
 	adapters[name] = adpater
 }
 
-func NewProtocol(name string, config string, rw io.ReadWriter) (protocol, error) {
+func NewProtocol(name string, config string, rw io.ReadWriter) (Protocol, error) {
 	adapter, ok := adapters[name]
 	if !ok {
 		err := fmt.Errorf("Protocol: unknown adapter name %q (forgot to import?)", name)

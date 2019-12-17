@@ -30,6 +30,7 @@ func (s *stream) Init(rw io.ReadWriter, config string) error {
 	if rw == nil {
 		return errors.New("streamProtocol:rw is nil")
 	}
+	s.rw = rw
 	cfg := make(map[string]string)
 	json.Unmarshal([]byte(config), &cfg)
 
@@ -62,7 +63,7 @@ func (s *stream) fixLen() error {
 			binary.BigEndian.PutUint16(b, uint16(size))
 		}
 		s.headDecode = func(b []byte) int {
-			return int(binary.LittleEndian.Uint16(b))
+			return int(binary.BigEndian.Uint16(b))
 		}
 		s.headBuf = head[:2]
 	case 4:
@@ -72,7 +73,7 @@ func (s *stream) fixLen() error {
 			binary.BigEndian.PutUint32(b, uint32(size))
 		}
 		s.headDecode = func(b []byte) int {
-			return int(binary.LittleEndian.Uint32(b))
+			return int(binary.BigEndian.Uint32(b))
 		}
 		s.headBuf = head[:4]
 	case 8:
@@ -82,7 +83,7 @@ func (s *stream) fixLen() error {
 			binary.BigEndian.PutUint64(b, uint64(size))
 		}
 		s.headDecode = func(b []byte) int {
-			return int(binary.LittleEndian.Uint64(b))
+			return int(binary.BigEndian.Uint64(b))
 		}
 		s.headBuf = head[:8]
 	default:
@@ -120,7 +121,8 @@ func (s *stream) Send(msg interface{}) error {
 	sendBuf.Write(s.headBuf)
 	sendBuf.Write(val)
 	s.headEncode(sendBuf.Bytes(), len(val))
-	return nil
+	_,err := s.rw.Write(sendBuf.Bytes())
+	return err
 }
 
 func (s *stream) Close() error {

@@ -3,8 +3,10 @@ package tcp
 import "net"
 
 type Tcp struct {
-	maxConn      int64
+	maxConn      int
 	listener     net.Listener
 	sendChanSize int
+
+	protocol protocol.Protocol
 
 }
