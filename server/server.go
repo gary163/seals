@@ -16,6 +16,16 @@ var (
  	adapters = make(map[string]Server)
 )
 
+type Hander interface {
+	Handle(session *Session)
+}
+
+type HandlerFunc func(session *Session)
+
+func (f HandlerFunc) Handle(session *Session){
+	f(session)
+}
+
 func Register(name string, adapter Server) {
 	adpatersMu.Lock()
 	defer adpatersMu.Unlock()
