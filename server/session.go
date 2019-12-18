@@ -15,14 +15,14 @@ type SessionsMap struct {
 }
 
 type Session struct {
-	id int64
-	sendChan chan interface{}
-	protocol protocol.Protocol
+	id        int64
+	sendChan  chan interface{}
+	protocol  protocol.Protocol
 	closeFlag int32
-	sendMu sync.RWMutex
-	recvMu sync.Mutex
-	ctx context.Context
-	sm *SessionsMap
+	sendMu    sync.RWMutex
+	recvMu    sync.Mutex
+	ctx       context.Context
+	sm        *SessionsMap
 }
 
 func (sm *SessionsMap) Set(session *Session) {

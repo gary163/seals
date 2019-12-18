@@ -2,6 +2,7 @@ package stream
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/gary163/seals/protocol"
@@ -9,7 +10,8 @@ import (
 
 func TestStream(t *testing.T) {
 	var buff  bytes.Buffer
-	stream, _ := protocol.NewProtocol("stream",``,&buff)
+	stream, _ := protocol.NewProtocol("stream",``)
+	stream.SetIOReadWriter(buff)
 	msg := []byte{'y','k','f','1','2','3'}
 	err := stream.Send(msg)
 	if err != nil {

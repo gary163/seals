@@ -12,6 +12,13 @@ import (
 	"github.com/gary163/seals/protocol"
 )
 
+const (
+	defaultPackHead  = 2
+	defaultByteOrder = "littleEndian"
+)
+
+var ErrIOReadWriterNil = errors.New("io.ReadWriter is nil")
+
 type stream struct {
 	maxSend    int    //最大发送的长度
 	maxRecv    int    //最小发送的长度
@@ -21,26 +28,42 @@ type stream struct {
 	headDecode func([]byte) int
 	rw         io.ReadWriter //io接口
 	n          int           //包头占用的字节数 可配置 1,2,4,8
+	littleEndian  bool //是否小端
+
 }
 
-const DEFAULT_PACK_HEAD_N = 2
-
 //初始化配置
-func (s *stream) Init(rw io.ReadWriter, config string) error {
-	if rw == nil {
-		return errors.New("streamProtocol:rw is nil")
-	}
-	s.rw = rw
+func (s *stream) Config(config string) error {
 	cfg := make(map[string]string)
-	json.Unmarshal([]byte(config), &cfg)
-
-	n, ok := cfg["n"]
-	if !ok {
-		s.n = DEFAULT_PACK_HEAD_N
-	} else {
-		s.n, _ = strconv.Atoi(n)
+	err := json.Unmarshal([]byte(config), &cfg)
+	if err != nil {
+		return err
 	}
+
+	if _,ok := cfg["n"]; !ok {
+		cfg["n"] = strconv.Itoa(defaultPackHead)
+	}
+	if _,ok := cfg["byteOrder"]; !ok {
+		cfg["byteOrder"] = defaultByteOrder
+	}
+
+	s.n,_= strconv.Atoi(cfg["n"])
+	if cfg["byteOrder"] == "littleEndian" {
+		s.littleEndian = true
+	}else{
+		s.littleEndian = false
+	}
+
 	return s.fixLen()
+}
+
+func (s *stream) SetIOReadWriter(rw io.ReadWriter) error {
+	if rw == nil {
+		return errors.New("streamProtocpl: io.ReadWriter is nil")
+	}
+
+	s.rw = rw
+	return nil
 }
 
 func (s *stream) fixLen() error {
@@ -60,30 +83,54 @@ func (s *stream) fixLen() error {
 		s.maxSend = math.MaxInt16
 		s.maxRecv = math.MaxInt16
 		s.headEncode = func(b []byte, size int) {
-			binary.BigEndian.PutUint16(b, uint16(size))
+			if s.littleEndian {
+				binary.LittleEndian.PutUint16(b, uint16(size))
+			}else{
+				binary.BigEndian.PutUint16(b, uint16(size))
+			}
 		}
 		s.headDecode = func(b []byte) int {
-			return int(binary.BigEndian.Uint16(b))
+			if s.littleEndian {
+				return int(binary.LittleEndian.Uint16(b))
+			}else{
+				return int(binary.BigEndian.Uint16(b))
+			}
 		}
 		s.headBuf = head[:2]
 	case 4:
 		s.maxSend = math.MaxInt32
 		s.maxRecv = math.MaxInt32
 		s.headEncode = func(b []byte, size int) {
-			binary.BigEndian.PutUint32(b, uint32(size))
+			if s.littleEndian {
+				binary.LittleEndian.PutUint32(b, uint32(size))
+			}else{
+				binary.BigEndian.PutUint32(b, uint32(size))
+			}
 		}
 		s.headDecode = func(b []byte) int {
-			return int(binary.BigEndian.Uint32(b))
+			if s.littleEndian {
+				return int(binary.LittleEndian.Uint32(b))
+			}else{
+				return int(binary.BigEndian.Uint32(b))
+			}
 		}
 		s.headBuf = head[:4]
 	case 8:
 		s.maxSend = math.MaxInt64
 		s.maxRecv = math.MaxInt64
 		s.headEncode = func(b []byte, size int) {
-			binary.BigEndian.PutUint64(b, uint64(size))
+			if s.littleEndian {
+				binary.LittleEndian.PutUint64(b, uint64(size))
+			}else{
+				binary.BigEndian.PutUint64(b, uint64(size))
+			}
 		}
 		s.headDecode = func(b []byte) int {
-			return int(binary.BigEndian.Uint64(b))
+			if s.littleEndian {
+				return int(binary.LittleEndian.Uint64(b))
+			}else{
+				return int(binary.BigEndian.Uint64(b))
+			}
 		}
 		s.headBuf = head[:8]
 	default:
@@ -94,6 +141,9 @@ func (s *stream) fixLen() error {
 }
 
 func (s *stream) Receive() (interface{}, error) {
+	if s.rw == nil {
+		return nil,ErrIOReadWriterNil
+	}
 	if _, err := io.ReadFull(s.rw, s.headBuf); err != nil {
 		return nil, err
 	}
@@ -112,6 +162,9 @@ func (s *stream) Receive() (interface{}, error) {
 }
 
 func (s *stream) Send(msg interface{}) error {
+	if s.rw == nil {
+		return ErrIOReadWriterNil
+	}
 	val, ok := msg.([]byte)
 	if !ok {
 		return errors.New("streamProtocol:method Send Parameter type error")

@@ -3,10 +3,13 @@ package server
 import (
 	"fmt"
 	"sync"
+
+	"github.com/gary163/seals/protocol"
+	"github.com/gary163/seals/server"
 )
 
 type Server interface {
-	Init(config string) error
+	Init(string, protocol.Protocol, server.Hander) error
 	Run() error
 	Stop() error
 }

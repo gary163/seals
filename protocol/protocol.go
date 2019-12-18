@@ -7,7 +7,8 @@ import (
 )
 
 type Protocol interface {
-	Init(rw io.ReadWriter, config string) error
+	Config(string) error
+	SetIOReadWriter( io.ReadWriter) error
 	Receive() (interface{}, error)
 	Send(interface{}) error
 	Close() error
@@ -31,14 +32,14 @@ func Register(name string, adpater Protocol) {
 	adapters[name] = adpater
 }
 
-func NewProtocol(name string, config string, rw io.ReadWriter) (Protocol, error) {
+func NewProtocol(name string, config string) (Protocol, error) {
 	adapter, ok := adapters[name]
 	if !ok {
 		err := fmt.Errorf("Protocol: unknown adapter name %q (forgot to import?)", name)
 		return nil, err
 	}
 
-	err := adapter.Init(rw, config)
+	err := adapter.Config(config)
 	if err != nil {
 		return nil, err
 	}
