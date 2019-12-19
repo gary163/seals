@@ -5,11 +5,10 @@ import (
 	"sync"
 
 	"github.com/gary163/seals/protocol"
-	"github.com/gary163/seals/server"
 )
 
 type Server interface {
-	Init(string, protocol.Protocol, server.Hander) error
+	Init(string, protocol.Protocol, Handler, *SessionManager) error
 	Run() error
 	Stop() error
 }
@@ -19,17 +18,7 @@ var (
  	adapters = make(map[string]Server)
 )
 
-type Hander interface {
-	Handle(session *Session)
-}
-
-type HandlerFunc func(session *Session)
-
-func (f HandlerFunc) Handle(session *Session){
-	f(session)
-}
-
-func Register(name string, adapter Server) {
+func RegisterServer(name string, adapter Server) {
 	adpatersMu.Lock()
 	defer adpatersMu.Unlock()
 	if adapter == nil {
@@ -42,16 +31,17 @@ func Register(name string, adapter Server) {
 	adapters[name] = adapter
 }
 
-func NewServer(name string, config string) (Server, error){
+func NewServer(name string, config string, protocol protocol.Protocol, handler Handler) (Server, error){
 	adapter, ok := adapters[name]
 	if !ok {
 		err := fmt.Errorf("Server: unknown adapter name %q (forgot to import?)", name)
 		return nil,err
 	}
-
-	err := adapter.Init(config)
+	sm := NewSessionManager()//初始化sessionsMap
+	err := adapter.Init(config, protocol, handler, sm)
 	if err != nil {
 		return nil,err
 	}
+
 	return adapter,nil
 }

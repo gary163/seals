@@ -29,16 +29,12 @@ type stream struct {
 	rw         io.ReadWriter //io接口
 	n          int           //包头占用的字节数 可配置 1,2,4,8
 	littleEndian  bool //是否小端
-
 }
 
 //初始化配置
 func (s *stream) Config(config string) error {
 	cfg := make(map[string]string)
-	err := json.Unmarshal([]byte(config), &cfg)
-	if err != nil {
-		return err
-	}
+	json.Unmarshal([]byte(config), &cfg)
 
 	if _,ok := cfg["n"]; !ok {
 		cfg["n"] = strconv.Itoa(defaultPackHead)
