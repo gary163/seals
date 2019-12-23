@@ -19,20 +19,24 @@ const (
 
 var ErrIOReadWriterNil = errors.New("io.ReadWriter is nil")
 
-type stream struct {
+type Stream struct {
 	maxSend    int    //最大发送的长度
 	maxRecv    int    //最小发送的长度
 	headBuf    []byte //包长度字节
 	bodyBuf    []byte //包体
+	n          int    //包头占用的字节数 可配置 1,2,4,8
+	littleEndian  bool //是否小端
 	headEncode func([]byte, int)
 	headDecode func([]byte) int
+}
+
+type codec struct {
+	protocol   *Stream
 	rw         io.ReadWriter //io接口
-	n          int           //包头占用的字节数 可配置 1,2,4,8
-	littleEndian  bool //是否小端
 }
 
 //初始化配置
-func (s *stream) Config(config string) error {
+func (s *Stream) Config(config string) error {
 	cfg := make(map[string]string)
 	json.Unmarshal([]byte(config), &cfg)
 
@@ -43,7 +47,12 @@ func (s *stream) Config(config string) error {
 		cfg["byteOrder"] = defaultByteOrder
 	}
 
-	s.n,_= strconv.Atoi(cfg["n"])
+	n,_ := strconv.Atoi(cfg["n"])
+	configNMap := map[int]int{1:1, 2:1, 4:1, 8:1}
+	if _,ok := configNMap[n]; !ok {
+		return errors.New("streamProtocol: n is invalid ")
+	}
+	s.n = n
 	if cfg["byteOrder"] == "littleEndian" {
 		s.littleEndian = true
 	}else{
@@ -53,16 +62,7 @@ func (s *stream) Config(config string) error {
 	return s.fixLen()
 }
 
-func (s *stream) SetIOReadWriter(rw io.ReadWriter) error {
-	if rw == nil {
-		return errors.New("streamProtocpl: io.ReadWriter is nil")
-	}
-
-	s.rw = rw
-	return nil
-}
-
-func (s *stream) fixLen() error {
+func (s *Stream) fixLen() error {
 	var head [8]byte
 	switch s.n {
 	case 1:
@@ -131,34 +131,46 @@ func (s *stream) fixLen() error {
 		s.headBuf = head[:8]
 	default:
 		return errors.New("streamProtocol:pack head config is invaild")
-
 	}
 	return nil
 }
 
-func (s *stream) Receive() (interface{}, error) {
-	if s.rw == nil {
+
+func (s *Stream) NewCodec(rw io.ReadWriter) (protocol.Codec, error) {
+	if rw == nil {
+		return nil,errors.New("streamProtocpl: io.ReadWriter is nil")
+	}
+	codec := &codec{
+		protocol :s,
+		rw:rw,
+	}
+	return codec,nil
+}
+
+func (c *codec) Receive() (interface{}, error) {
+	if c.rw == nil {
 		return nil,ErrIOReadWriterNil
 	}
-	if _, err := io.ReadFull(s.rw, s.headBuf); err != nil {
+	if _, err := io.ReadFull(c.rw, c.protocol.headBuf); err != nil {
 		return nil, err
 	}
-	size := s.headDecode(s.headBuf)
-	if size > s.maxRecv {
+	size := c.protocol.headDecode(c.protocol.headBuf)
+	//fmt.Printf("Receive [Stream] size:%d,headBuf:%v\n",size, c.protocol.headBuf)
+	if size > c.protocol.maxRecv {
 		return nil, errors.New("streamProtocol:pack size is large than maxRecv")
 	}
-	if cap(s.bodyBuf) < size {
-		s.bodyBuf = make([]byte, size*2)
+	if cap(c.protocol.bodyBuf) < size {
+		c.protocol.bodyBuf = make([]byte, size*2)
 	}
-	buff := s.bodyBuf[:size]
-	if _, err := io.ReadFull(s.rw, buff); err != nil {
+	buff := c.protocol.bodyBuf[:size]
+	if _, err := io.ReadFull(c.rw, buff); err != nil {
 		return nil, err
 	}
 	return buff, nil
 }
 
-func (s *stream) Send(msg interface{}) error {
-	if s.rw == nil {
+func (c *codec) Send(msg interface{}) error {
+	if c.rw == nil {
 		return ErrIOReadWriterNil
 	}
 	val, ok := msg.([]byte)
@@ -166,21 +178,23 @@ func (s *stream) Send(msg interface{}) error {
 		return errors.New("streamProtocol:method Send Parameter type error")
 	}
 
+	//fmt.Printf("Send [Stream] size:%d,headBuf:%v\n",len(val), c.protocol.headBuf)
 	sendBuf := new(bytes.Buffer)
-	sendBuf.Write(s.headBuf)
+	sendBuf.Write(c.protocol.headBuf)
 	sendBuf.Write(val)
-	s.headEncode(sendBuf.Bytes(), len(val))
-	_,err := s.rw.Write(sendBuf.Bytes())
+	buf := sendBuf.Bytes()
+	c.protocol.headEncode(buf, len(val))
+	_,err := c.rw.Write(buf)
 	return err
 }
 
-func (s *stream) Close() error {
-	if closer, ok := s.rw.(io.Closer); ok {
+func (c *codec) Close() error {
+	if closer, ok := c.rw.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
 func init() {
-	protocol.Register("stream", &stream{})
+	protocol.Register("stream", &Stream{})
 }

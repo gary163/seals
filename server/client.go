@@ -8,8 +8,8 @@ import (
 )
 
 type Client interface {
-	Init(string, protocol.Protocol, Handler) error
-	Dial() error
+	Init(string, protocol.Protocol, Handler, *SessionManager) error
+	Run()
 	Close() error
 }
 
@@ -38,7 +38,8 @@ func NewClient(name string, config string, protocol protocol.Protocol, handler H
 		err := fmt.Errorf("Client: unknown adapter name %q (forgot to import?)", name)
 		return nil,err
 	}
-	err := adapter.Init(config, protocol, handler)
+	sm := NewSessionManager()
+	err := adapter.Init(config, protocol, handler, sm)
 	if err != nil {
 		return nil,err
 	}

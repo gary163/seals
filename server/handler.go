@@ -1,7 +1,7 @@
 package server
 
 type Handler interface {
-	Handle(session *Session)
+	Handle(*Session)
 }
 
 type HandlerFunc func(session *Session)

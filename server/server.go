@@ -37,7 +37,7 @@ func NewServer(name string, config string, protocol protocol.Protocol, handler H
 		err := fmt.Errorf("Server: unknown adapter name %q (forgot to import?)", name)
 		return nil,err
 	}
-	sm := NewSessionManager()//初始化sessionsMap
+	sm := NewSessionManager()
 	err := adapter.Init(config, protocol, handler, sm)
 	if err != nil {
 		return nil,err

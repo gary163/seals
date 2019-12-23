@@ -1,7 +1,6 @@
 package tcpserver
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -18,7 +17,7 @@ const (
 	defaultMaxConn = 200000
 	defaultSendChanSize = 1024
 	maxTryTime = 3
-	defaultAddr = "127.0.0.1:"
+	defaultAddr = "0.0.0.0:0"
 )
 
 type tcpServer struct {
@@ -29,7 +28,6 @@ type tcpServer struct {
 	protocol     protocol.Protocol
 	handler      server.Handler
 	sm           *server.SessionManager
- 	stop         func()
 }
 
 func init() {
@@ -69,8 +67,6 @@ func (s *tcpServer) Init(config string, protocol protocol.Protocol, handler serv
 }
 
 func (s *tcpServer) Run() error {
-	ctx,cancel := context.WithCancel(context.Background())
-	s.stop = cancel
 	tryTime := 0
 	for{
 		conn,err := s.listener.Accept()
@@ -83,6 +79,7 @@ func (s *tcpServer) Run() error {
 			if ne, ok := err.(net.Error); ok && ne.Temporary() && tryTime < maxTryTime{
 				time.Sleep(5*time.Millisecond)
 				tryTime ++
+				log.Printf("tryTime:%v\n",tryTime)
 				continue
 			}
 			if strings.Contains(err.Error(), "use of closed network connection") {
@@ -91,17 +88,17 @@ func (s *tcpServer) Run() error {
 		}
 
 		go func(){
-			s.protocol.SetIOReadWriter(conn)
-			session := s.sm.NewSession(s.protocol, s.sendChanSize, ctx)
+			codec,_ := s.protocol.NewCodec(conn)
+			session := s.sm.NewSession(codec, s.sendChanSize)
 			s.handler.Handle(session)
 		}()
 	}
 }
 
 func (s *tcpServer) Stop() error {
+	log.Printf("TcpServer stoping....")
 	s.listener.Close()
-	s.stop()
-	s.sm.Wait()
+	s.sm.Destroy()
 	return nil
 }
 

@@ -13,15 +13,15 @@ func TestStream(t *testing.T) {
 	if err != nil {
 		t.Errorf("NewProtocol err:%v\n",err)
 	}
-	stream.SetIOReadWriter(&buff)
+	codec, _ := stream.NewCodec(&buff)
 	msg := []byte{'y','k','f','1','2','3'}
-	err = stream.Send(msg)
+	err = codec.Send(msg)
 	if err != nil {
 		t.Errorf("send Error:%v\n",err)
 	}
 
 
-	data,err := stream.Receive()
+	data,err := codec.Receive()
 	if err != nil {
 		t.Errorf("receive err:%v\n",err)
 	}
