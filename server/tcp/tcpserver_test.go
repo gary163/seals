@@ -5,13 +5,16 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/gary163/seals/protocol"
 	_ "github.com/gary163/seals/protocol/stream"
 	"github.com/gary163/seals/server"
 	"io"
 	"math/rand"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
 )
 
 type TestProtocol struct {
@@ -88,7 +91,6 @@ func TcpServerTest(t *testing.T ,sendChanSize int) {
 	cfg := make(map[string]string)
 	cfg["addr"] = "0.0.0.0:55567"
 	cfg["sendChanSize"]  = strconv.Itoa(sendChanSize)
-	cfg["testClearBuff"]  = "1"
 	strCfg,err := json.Marshal(cfg)
 
 	proto, err := protocol.NewProtocol("stream",`{"n":"2"}`)
@@ -190,5 +192,83 @@ func (c *tcpclient) Handle(session *server.Session) {
 			c.t.Errorf("msg1(%s) not equal msg2(%s)\n",msg1,msg2)
 		}
 	}
+}
+
+const clientConnNum = 5
+const msgNum = 1000
+var channelMsgs = make([][]byte, msgNum)
+var waitClient sync.WaitGroup
+var channel = server.NewChannel()
+
+func sendToclient(){
+	waitClient.Wait()
+	fmt.Println("SendToClient .......")
+	for i:=0; i<msgNum;i++ {
+		msg := RandByte(500)
+		channelMsgs[i] = msg
+		channel.Fetch(func(session *server.Session){
+			err := session.Send(msg)
+			fmt.Printf("SendToClient session[%d], err:%v\n",session.ID(),err)
+		})
+	}
+}
+
+type channelServer struct {
+	t *testing.T
+}
+
+func (cs *channelServer) Handle(session *server.Session) {
+	//defer session.Close()
+	fmt.Printf("Server [%d] Handling...\n",session.ID())
+	channel.Set(session.ID(),session)
+	channel.Delete(session.ID())
+	if channel.Get(session.ID()) != nil {
+		cs.t.Fatal("After set and get session is not nil")
+	}
+	channel.Set(session.ID(),session)
+}
+
+type channelClient struct {
+	t *testing.T
+}
+
+func (cc *channelClient) Handle(session *server.Session){
+	waitClient.Done()
+	fmt.Printf("Client[%d] Handling\n",session.ID())
+	for i:=0; i<msgNum; i++ {
+		recv,_ := session.Receive()
+		msg := recv.([]byte)
+		fmt.Printf("Client Recv len:%d\n",len(msg))
+		if equal := bytes.Equal(msg,channelMsgs[i]); !equal {
+			cc.t.Fatalf("Recv msg:%v not equal send msg:%v\n ",msg,channelMsgs[i])
+		}
+	}
+}
+
+func TestChannel(t *testing.T){
+	waitClient.Add(clientConnNum)
+	proto, err := protocol.NewProtocol("stream","")
+	if err != nil {
+		t.Fatalf("New protocol err:%v\n",err)
+	}
+	srv, err := server.NewServer("tcpServer",`{"addr":"0.0.0.0:58567"}`,proto,&channelServer{t})
+	if err != nil {
+		t.Fatalf("New server err:%v\n",err)
+	}
+	go func(){
+		fmt.Println("Server running......")
+		srv.Run()
+	}()
+
+	go sendToclient()
+
+	cli, err := server.NewClient("tcpClient",`{"addr":"127.0.0.1:58567","connNum":"5"}`, proto, &channelClient{t})
+	if err != nil {
+		t.Fatalf("New client err:%v\n",err)
+	}
+	fmt.Println("Client running......")
+	time.Sleep(time.Second)
+	cli.Run()
+	srv.Stop()
 }
 

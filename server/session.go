@@ -202,7 +202,7 @@ func (s *Session) Receive() (interface{},error) {
 		return nil,err
 	}
 
-	//log.Printf("[Receive] session[%+v]has  release a lock\n",s)
+	log.Printf("[Receive] session[%+v]has  release a lock\n",s)
 	return msg,nil
 }
 
