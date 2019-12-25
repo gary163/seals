@@ -26,6 +26,17 @@ type Session struct {
 	sendMu    sync.Mutex
 	recvMu    sync.Mutex
 	sm        *SessionManager
+	closeChan chan int
+	closeCallBackHead *callbackList
+	closeMu  sync.Mutex
+}
+
+//以单链表记录关闭调用链
+type callbackList struct {
+	handler   interface{}
+	key       interface{}
+	callback  func()
+	next      *callbackList
 }
 
 func (sm *SessionManager) NewSession(codec protocol.Codec, sendChanSize int) *Session {
@@ -68,20 +79,14 @@ func (sm *SessionManager) Del(sid int64) {
 }
 
 func (sm *SessionManager) Destroy() {
-	log.Println("Session destroying......")
 	sm.destroyOnce.Do(func(){
-		log.Println("Session Destroy: try to get a lock")
-		log.Println("Session Destroy: got a lock")
 		sm.mu.Lock()
 		for _,session := range sm.sessions {
 			err := session.Close()
 			log.Printf("Session Destroy Close err:%v\n",err)
 		}
 		sm.mu.Unlock()
-		log.Println("Session Destroy: release lock")
-		log.Println("Session Destroy:waiting")
 		sm.wg.Wait()
-		log.Println("Session Destroy: Done")
 	})
 }
 
@@ -98,6 +103,7 @@ func NewSession(codec protocol.Codec, sendChanSize int) *Session {
 func newSession(codec protocol.Codec, sendChanSize int, sm *SessionManager) *Session {
 	session := &Session{}
 	session.id = atomic.AddInt64(&sessionID,1)
+	session.closeChan = make(chan int)
 	if sendChanSize > 0 {
 		session.sendChan = make(chan interface{},sendChanSize)
 		go session.sendLoop()
@@ -105,9 +111,6 @@ func newSession(codec protocol.Codec, sendChanSize int, sm *SessionManager) *Ses
 	session.closeFlag = 0
 	session.codec = codec
 	session.sm = sm
-
-	//fmt.Printf("newSession sm :%v\n",session.sm)
-
 	return session
 }
 
@@ -116,6 +119,76 @@ var SessionBlockedError = errors.New("Session Blocked")
 
 func (s *Session) ID() int64 {
 	return s.id
+}
+
+func (s *Session) isClosed() bool {
+	return atomic.LoadInt32(&s.closeFlag) == 1
+}
+
+func (s *Session) AddCloseCallback(handler interface{}, key interface{}, callback func()) {
+	if s.isClosed() {
+		return
+	}
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+
+	if s.closeCallBackHead == nil {//链表的表头不存数据，只存下一个的指针
+		s.closeCallBackHead = new(callbackList)
+	}
+
+	head := s.closeCallBackHead
+	next := head
+	tail := head
+
+	for next != nil {
+		tail = next
+		next = next.next
+	}
+
+	node := &callbackList{
+		key:key,
+		callback:callback,
+		handler:handler,
+		next:nil,
+	}
+
+	tail.next = node
+}
+
+func (s *Session) DelCloseCallback(handler interface{}, key interface{}) {
+	if s.isClosed() {
+		return
+	}
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+
+	head := s.closeCallBackHead
+	next,pre := head,head
+	for next != nil {
+		node := next
+		if node.handler == handler && node.key == key {
+			pre.next = node.next
+			break
+		}
+		pre = node
+		next = next.next
+	}
+}
+
+func (s *Session) InvokeCallbackFun() {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+
+	head := s.closeCallBackHead
+	next := head
+
+	for next != nil {
+		node := next
+		if node.callback != nil {
+			node.callback()
+		}
+		next = next.next
+	}
 }
 
 func (s *Session) Receive() (interface{},error) {
@@ -138,10 +211,9 @@ func (s *Session) Send(msg interface{}) error {
 	defer s.sendMu.Unlock()
 	if s.sendChan == nil {
 		err := s.codec.Send(msg)
-		//log.Printf("[Send sync] Session:[%+v] msg:%v\n",s,msg)
 		return err
 	}
-	//log.Printf("[Send] Session:[%+v] msg:%v\n",s,msg)
+
 	select {
 	case s.sendChan <- msg:
 		return nil
@@ -151,21 +223,19 @@ func (s *Session) Send(msg interface{}) error {
 }
 
 func (s *Session) Close() error {
-	log.Printf("Session Close session:[%+v]\n",s)
 	if atomic.CompareAndSwapInt32(&s.closeFlag, 0, 1) {
+		close(s.closeChan)//关闭通道，让sendLoop goroutine 先退出
 		if s.sendChan != nil {
 			s.sendMu.Lock()
-			s.clearSendChanBuff()
+			s.clearSendChanBuff()//清除剩余的buff再关闭
 			close(s.sendChan)
 			s.sendMu.Unlock()
 		}
 
-		log.Printf("Session[%+v] try to close protocol.....",s)
-
 		err := s.codec.Close()
-		log.Printf("Session[%+v] close protocol.....",s)
 		if s.sm != nil {
 			go func(){
+				s.InvokeCallbackFun()
 				s.sm.Del(s.id)
 			}()
 		}
@@ -194,13 +264,13 @@ func (s *Session) sendLoop() {
 		select {
 		case msg,ok := <-s.sendChan:
 			if !ok {//通道关闭
-				log.Println("sendLoop return 1")
 				return
 			}
 			if err := s.codec.Send(msg); err != nil {
-				log.Printf("sendLoop return 2,error:%v\n",err)
 				return
 			}
+		case <- s.closeChan:
+			return
 		}
 	}
 }
