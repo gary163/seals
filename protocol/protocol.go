@@ -24,7 +24,6 @@ var (
 )
 
 func Register(name string, adpater Protocol) {
-	fmt.Println("regisger")
 	procotolMux.Lock()
 	defer procotolMux.Unlock()
 	if adpater == nil {
@@ -35,13 +34,10 @@ func Register(name string, adpater Protocol) {
 		panic("Protocol:Register called twice for adapter" + name)
 	}
 	adapters[name] = adpater
-
-	fmt.Printf("adapters:%+v\n",adapters)
 }
 
 func NewProtocol(name string, config string) (Protocol, error) {
 	adapter, ok := adapters[name]
-	fmt.Println(adapters)
 	if !ok {
 		err := fmt.Errorf("Protocol: unknown adapter name %q (forgot to import?)", name)
 		return nil, err

@@ -1,6 +1,8 @@
 package server
 
-import "sync"
+import (
+	"sync"
+)
 
 type KEY interface{}
 

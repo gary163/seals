@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"log"
 	"sync"
 	"sync/atomic"
 
@@ -23,7 +22,7 @@ type Session struct {
 	sendChan  chan interface{}
 	codec     protocol.Codec
 	closeFlag int32
-	sendMu    sync.Mutex
+	sendMu    sync.RWMutex //使用读写锁，发送时可以并发写入buffchan,提高并发能力
 	recvMu    sync.Mutex
 	sm        *SessionManager
 	closeChan chan int
@@ -66,24 +65,19 @@ func (sm *SessionManager) Get(sid int64)*Session {
 }
 
 func (sm *SessionManager) Del(sid int64) {
-	log.Printf("SM session[%d] try to get a log",sid)
 	sm.mu.Lock()
-	log.Printf("SM session[%d] had got a log",sid)
 	defer sm.mu.Unlock()
 	if _,ok := sm.sessions[sid]; ok {
 		delete(sm.sessions,sid)
 		sm.wg.Done()
 	}
-
-	log.Println("SessionManager Del a record")
 }
 
 func (sm *SessionManager) Destroy() {
 	sm.destroyOnce.Do(func(){
 		sm.mu.Lock()
 		for _,session := range sm.sessions {
-			err := session.Close()
-			log.Printf("Session Destroy Close err:%v\n",err)
+			session.Close()
 		}
 		sm.mu.Unlock()
 		sm.wg.Wait()
@@ -192,34 +186,48 @@ func (s *Session) InvokeCallbackFun() {
 }
 
 func (s *Session) Receive() (interface{},error) {
-	//log.Printf("[Receive] session[%+v] try to get lock\n",s)
 	s.recvMu.Lock()
-	//log.Printf("[Receive] session[%+v]has  got a lock\n",s)
 	defer s.recvMu.Unlock()
 
 	msg,err := s.codec.Receive()
 	if err != nil {
 		return nil,err
 	}
-
-	log.Printf("[Receive] session[%+v]has  release a lock\n",s)
 	return msg,nil
 }
 
 func (s *Session) Send(msg interface{}) error {
-	s.sendMu.Lock()
-	defer s.sendMu.Unlock()
-	if s.sendChan == nil {
-		err := s.codec.Send(msg)
-		return err
+	//异步send,先写buffer chan，利用读锁来提高并发能力
+	if s.sendChan != nil {
+		s.sendMu.RLock()
+		if s.isClosed() {
+			s.sendMu.RUnlock()
+			return SessionClosedError
+		}
+
+		select {
+		case s.sendChan <- msg :
+			s.sendMu.RUnlock()
+			return nil
+		default:
+			s.sendMu.RUnlock()
+			s.Close()
+			return SessionBlockedError
+		}
 	}
 
-	select {
-	case s.sendChan <- msg:
-		return nil
-	default:
-		return SessionBlockedError
+	//同步send，利用写锁来确保原子性
+	if s.isClosed() {
+		return SessionClosedError
 	}
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+
+	if err := s.codec.Send(msg); err != nil {
+		s.Close()
+		return err
+	}
+	return nil
 }
 
 func (s *Session) Close() error {
