@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"sync"
 	"testing"
-	"time"
 )
 
 type TestProtocol struct {
@@ -108,7 +107,7 @@ func TcpServerTest(t *testing.T ,sendChanSize int) {
 		srv.Run()
 	}()
 
-	client,err := server.NewClient("tcpClient",`{"addr":"127.0.0.1:55567","connNum":"1"}`,proto, &tcpclient{t})
+	client,err := server.NewClient("tcpClient",`{"addr":"127.0.0.1:55567","connNum":"100"}`,proto, &tcpclient{t})
 	if err != nil {
 		t.Fatalf("New Client err:%v\n",err)
 	}
@@ -154,7 +153,6 @@ func (s *tcpserver) Handle(session *server.Session) {
 		defer func(){
 			for i:=0; i<10; i++ {
 				n := <- callbackChan
-				s.t.Logf("callback Chan n:%d\n",n)
 				if i != n {
 					s.t.Fatalf("i:%d not equal recv n:%d\n",i,n)
 				}
@@ -165,7 +163,6 @@ func (s *tcpserver) Handle(session *server.Session) {
 	for {
 		recv,err := session.Receive()
 		if err != nil {
-			s.t.Logf("Server Handle Recv err :%v\n",err)
 			return
 		}
 		if err = session.Send(recv); err != nil {
@@ -194,23 +191,26 @@ func (c *tcpclient) Handle(session *server.Session) {
 	}
 }
 
-const clientConnNum = 5
-const msgNum = 1000
+const clientConnNum = 100
+const msgNum = 2000
 var channelMsgs = make([][]byte, msgNum)
 var waitClient sync.WaitGroup
 var channel = server.NewChannel()
+var finishChan = make(chan struct{})
 
 func sendToclient(){
 	waitClient.Wait()
-	fmt.Println("SendToClient .......")
 	for i:=0; i<msgNum;i++ {
 		msg := RandByte(500)
 		channelMsgs[i] = msg
 		channel.Fetch(func(session *server.Session){
 			err := session.Send(msg)
-			fmt.Printf("SendToClient session[%d], err:%v\n",session.ID(),err)
+			if err != nil {
+				fmt.Printf("Send err:%v\n",err)
+			}
 		})
 	}
+
 }
 
 type channelServer struct {
@@ -218,14 +218,15 @@ type channelServer struct {
 }
 
 func (cs *channelServer) Handle(session *server.Session) {
-	//defer session.Close()
-	fmt.Printf("Server [%d] Handling...\n",session.ID())
+	defer session.Close()
 	channel.Set(session.ID(),session)
 	channel.Delete(session.ID())
 	if channel.Get(session.ID()) != nil {
 		cs.t.Fatal("After set and get session is not nil")
 	}
 	channel.Set(session.ID(),session)
+	waitClient.Done()
+	<-finishChan
 }
 
 type channelClient struct {
@@ -233,17 +234,23 @@ type channelClient struct {
 }
 
 func (cc *channelClient) Handle(session *server.Session){
-	waitClient.Done()
-	fmt.Printf("Client[%d] Handling\n",session.ID())
 	for i:=0; i<msgNum; i++ {
-		recv,_ := session.Receive()
+		recv,err := session.Receive()
+
+		if err != nil {
+			fmt.Printf("Client Recv err:%v\n",err)
+		}
+
 		msg := recv.([]byte)
-		fmt.Printf("Client Recv len:%d\n",len(msg))
+		//fmt.Printf("Client recv len(msg):%d,seesion:%d\n",len(msg),session.ID())
 		if equal := bytes.Equal(msg,channelMsgs[i]); !equal {
 			cc.t.Fatalf("Recv msg:%v not equal send msg:%v\n ",msg,channelMsgs[i])
 		}
 	}
 }
+
+const serverAddr = "0.0.0.0:58567"
+const clientAddr = "127.0.0.1:58567"
 
 func TestChannel(t *testing.T){
 	waitClient.Add(clientConnNum)
@@ -251,24 +258,32 @@ func TestChannel(t *testing.T){
 	if err != nil {
 		t.Fatalf("New protocol err:%v\n",err)
 	}
-	srv, err := server.NewServer("tcpServer",`{"addr":"0.0.0.0:58567"}`,proto,&channelServer{t})
+
+	serverConfigMap := make(map[string]string)
+	serverConfigMap["addr"] = serverAddr
+	serverConfigMap["sendChanSize"] = strconv.Itoa(msgNum)
+
+	serverCfgString,_ := json.Marshal(serverConfigMap)
+	srv, err := server.NewServer("tcpServer",string(serverCfgString),proto,&channelServer{t})
 	if err != nil {
 		t.Fatalf("New server err:%v\n",err)
 	}
 	go func(){
-		fmt.Println("Server running......")
 		srv.Run()
 	}()
 
 	go sendToclient()
 
-	cli, err := server.NewClient("tcpClient",`{"addr":"127.0.0.1:58567","connNum":"5"}`, proto, &channelClient{t})
+	clientConfigMap := make(map[string]string)
+	clientConfigMap["addr"] = clientAddr
+	clientConfigMap["connNum"] = strconv.Itoa(clientConnNum)
+	clientCfgString,_ := json.Marshal(clientConfigMap)
+	cli, err := server.NewClient("tcpClient",string(clientCfgString), proto, &channelClient{t})
 	if err != nil {
 		t.Fatalf("New client err:%v\n",err)
 	}
-	fmt.Println("Client running......")
-	time.Sleep(time.Second)
 	cli.Run()
+	close(finishChan)
 	srv.Stop()
 }
 

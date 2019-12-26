@@ -70,16 +70,16 @@ func (s *tcpServer) Run() error {
 	tryTime := 0
 	for{
 		conn,err := s.listener.Accept()
-		if s.sm.Len() > int64(defaultMaxConn) {
-			log.Printf("Exceeded the maximum number of connections:%d\n",defaultMaxConn)
+		if s.sm.Len() > int64(s.maxConn) {
+			log.Printf("Too manay connection:%d\n",s.maxConn)
 			conn.Close()
+			continue
 		}
 
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Temporary() && tryTime < maxTryTime{
 				time.Sleep(5*time.Millisecond)
 				tryTime ++
-				log.Printf("tryTime:%v\n",tryTime)
 				continue
 			}
 			if strings.Contains(err.Error(), "use of closed network connection") {
@@ -96,7 +96,6 @@ func (s *tcpServer) Run() error {
 }
 
 func (s *tcpServer) Stop() error {
-	log.Printf("TcpServer stoping....")
 	s.listener.Close()
 	s.sm.Destroy()
 	return nil

@@ -3,7 +3,6 @@ package tcpserver
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"strconv"
@@ -58,13 +57,10 @@ func (c *tcpClient) Init(config string, protocol protocol.Protocol, handler serv
 }
 
 func (c *tcpClient) Run() {
-	fmt.Println("Client dial running....")
 	for i:=0; i<c.connNum; i++ {
 		c.wg.Add(1)
-		fmt.Println("Client dial running1111....")
 		go func(){
 			conn,err := c.dial()
-			fmt.Printf("Client dial conn:%d\n",i)
 			if err != nil {
 				log.Fatalf("Client dial got a err:%v\n",err)
 			}
@@ -74,7 +70,6 @@ func (c *tcpClient) Run() {
 			c.wg.Done()
 		}()
 	}
-	fmt.Println("Client dial running222222....")
 	c.wg.Wait()
 }
 
@@ -93,13 +88,10 @@ func (c *tcpClient) dial() (net.Conn,error) {
 		}
 	}else{
 		for{
-			fmt.Printf("Client Try to connect: tryTime:%d\n",tryConnTime)
 			netConn, err = net.Dial("tcp", c.addr)
 			if err == nil || tryConnTime > defaultMaxTryTime {
-				fmt.Println("Client Dial break....")
 				break
 			}
-			fmt.Printf("Client connect: tryTime:%d\n",tryConnTime)
 			time.Sleep(50*time.Millisecond)
 			tryConnTime++
 		}
