@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gary163/seals/protocol"
-	_ "github.com/gary163/seals/protocol/stream"
+	_ "github.com/gary163/seals/protocol/binary"
 	"github.com/gary163/seals/server"
 	"io"
 	"math/rand"
@@ -92,7 +92,7 @@ func TcpServerTest(t *testing.T ,sendChanSize int) {
 	cfg["sendChanSize"]  = strconv.Itoa(sendChanSize)
 	strCfg,err := json.Marshal(cfg)
 
-	proto, err := protocol.NewProtocol("stream",`{"n":"2"}`)
+	proto, err := protocol.NewProtocol("binary",`{"fixlen":{},"bufio":{"readSize":"1024","writeSize":"1024"}}`)
 	//proto := &TestProtocol{}
 	if err != nil {
 		t.Fatalf("protcol error:%v\n",err)
@@ -254,7 +254,7 @@ const clientAddr = "127.0.0.1:58567"
 
 func TestChannel(t *testing.T){
 	waitClient.Add(clientConnNum)
-	proto, err := protocol.NewProtocol("stream","")
+	proto, err := protocol.NewProtocol("binary",`{"fixlen":{},"bufio":{"readSize":"2048","writeSize":"2048"}}`)
 	if err != nil {
 		t.Fatalf("New protocol err:%v\n",err)
 	}

@@ -9,7 +9,7 @@ import (
 
 func TestStream(t *testing.T) {
 	var buff  bytes.Buffer
-	stream, err := protocol.NewProtocol("stream","")
+	stream, err := protocol.NewProtocol("binary",`{"fixlen":{},"bufio":{}}`)
 	if err != nil {
 		t.Errorf("NewProtocol err:%v\n",err)
 	}
@@ -19,7 +19,6 @@ func TestStream(t *testing.T) {
 	if err != nil {
 		t.Errorf("send Error:%v\n",err)
 	}
-
 
 	data,err := codec.Receive()
 	if err != nil {

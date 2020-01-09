@@ -78,7 +78,7 @@ func (s *tcpServer) Run() error {
 
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Temporary() && tryTime < maxTryTime{
-				time.Sleep(5*time.Millisecond)
+				time.Sleep(50*time.Millisecond)
 				tryTime ++
 				continue
 			}
