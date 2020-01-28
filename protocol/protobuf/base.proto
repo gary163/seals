@@ -1,0 +1,23 @@
+syntax = "proto3";
+package base;
+
+message BaseMessage  {
+    // 消息头部
+    string head = 1;
+    // 消息内容
+    Body body = 2;
+};
+
+
+message Head {
+    string name = 1;
+};
+
+message Body {
+
+};
+
+message ResponseCode {
+    int32 retcode = 1;            // 返回码
+    string error_messgae = 2;     // 返回失败时，错误信息
+};

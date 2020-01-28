@@ -1,4 +1,4 @@
-package stream
+package binary
 
 import (
 	"bytes"

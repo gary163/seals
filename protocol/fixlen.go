@@ -162,25 +162,14 @@ func (c *codec) Receive() (interface{}, error) {
 	}
 
 	c.recvBuf.Reset(body)
-	if c.base == nil {
-		return body, nil
-	}
 	return c.base.Receive()
 }
 
 func (c *codec) Send(msg interface{}) error {
 	c.sendBuf.Reset()
 	c.sendBuf.Write(c.headBuf)
-	if c.base != nil {
-		if err := c.base.Send(msg); err != nil {
-			return nil
-		}
-	} else {
-		val, ok := msg.([]byte)
-		if !ok {
-			return errors.New("Send Parameter type error")
-		}
-		c.sendBuf.Write(val)
+	if err := c.base.Send(msg); err != nil {
+		return nil
 	}
 
 	buff := c.sendBuf.Bytes()

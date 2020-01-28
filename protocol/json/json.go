@@ -1,9 +1,11 @@
-package codec
+package json
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"reflect"
+	"strings"
 
 	"github.com/gary163/seals/protocol"
 )
@@ -18,7 +20,14 @@ func (j *JsonProtocol) Register(t interface{}) {
 	if rt.Kind() == reflect.Ptr {
 		rt = rt.Elem()
 	}
-	name := rt.PkgPath() + "/" + rt.Name()
+	path := rt.PkgPath() + "/" + rt.Name()
+	bys := strings.Split(path,"/")
+	l := len(bys)
+	prefix := ""
+	if l-2 >= 0 {
+		prefix = bys[l-2]
+	}
+	name := fmt.Sprintf("%v_%v",prefix,bys[l-1])
 	j.types[name] = rt
 	j.names[rt] = name
 }
@@ -82,6 +91,7 @@ func (c *jsonCodec) Send(msg interface{}) error {
 	out.Body = msg
 
 	err := c.encoder.Encode(&out)
+	fmt.Printf("out:%+v\n",out)
 	return err
 }
 
